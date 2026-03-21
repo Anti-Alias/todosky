@@ -1,0 +1,74 @@
+use std::num::NonZeroU64;
+
+use egui::{Context, Frame, Id, Ui, Window};
+
+pub type TaskId = NonZeroU64;
+
+/// Is a Task
+#[derive(Clone, Eq, PartialEq, Debug)]
+pub struct Task {
+    pub id: TaskId,
+    pub name: String,
+    pub description: Option<String>,
+    pub dependencies: Vec<TaskId>,
+    pub selected: bool,
+}
+
+impl Task {
+
+    pub fn new(id: TaskId, name: impl Into<String>) -> Self {
+        Self {
+            id,
+            name: name.into(),
+            description: None,
+            dependencies: vec![],
+            selected: false,
+        }
+    }
+
+    pub fn egui_id(&self) -> Id {
+        Id::new(self.id)
+    }
+
+    pub fn show(&self, ui: &mut Ui) {
+        Frame::NONE..show(ui, |ui| {
+            ui.label("FUCK YEAH").;
+        });
+    }
+}
+
+
+pub struct TaskGraph {
+    sequence: u64,
+    tasks: Vec<Task>,
+}
+
+impl TaskGraph {
+
+    fn next_id(&mut self) -> NonZeroU64 {
+        let id = self.sequence;
+        self.sequence += 1;
+        NonZeroU64::new(id).unwrap()
+    }
+
+    pub fn add_task(&mut self, task_name: impl Into<String>) -> TaskId {
+        let task_id = self.next_id();
+        let task = Task::new(task_id, task_name);
+        self.tasks.push(task);
+        task_id
+    }
+
+    pub fn tasks(&self) -> &[Task] {
+        &self.tasks
+    }
+}
+
+impl Default for TaskGraph {
+    fn default() -> Self {
+        Self {
+            sequence: 1,
+            tasks: vec![],
+        }
+    }
+}
+
