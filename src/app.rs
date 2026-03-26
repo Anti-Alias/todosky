@@ -47,7 +47,7 @@ impl TodoskyApp {
         CentralPanel::default().show(ctx, |ui| {
             self.paint_connection_lines(ui.painter());
             for (_, task) in self.graph.iter_mut() {
-                task.show(ui);
+                task.show(ui, ctx);
             }
         });
     }

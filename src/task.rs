@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use egui::{Color32, Frame, Label, Layout, Pos2, Rect, Response, Sense, Stroke, Ui, UiBuilder, Vec2, Widget};
+use egui::{Color32, Context, Frame, Label, Layout, Pos2, Rect, Response, Sense, Stroke, Ui, UiBuilder, Vec2, Widget};
 use slotmap::{new_key_type, SlotMap};
 
 new_key_type! { pub struct TaskId; }
@@ -11,7 +11,6 @@ const TASK_STROKE: Stroke = Stroke {
     color: Color32::WHITE,
 };
 
-/// Is a Task
 #[derive(Clone, PartialEq, Debug)]
 pub struct Task {
     pub name: String,
@@ -31,6 +30,7 @@ impl Task {
         }
     }
 
+    /// Size / location this task occupies
     pub fn rect(&self) -> Rect {
         Rect {
             min: Pos2::new(self.x, self.y),
@@ -38,7 +38,8 @@ impl Task {
         }
     }
 
-    pub fn show(&mut self, ui: &mut Ui) -> Response {
+    /// Renders task UI
+    pub fn show(&mut self, ui: &mut Ui, ctx: &Context) -> Response {
         let rect = self.rect();
         let builder = UiBuilder::default().sense(Sense::DRAG).max_rect(rect);
         let response = ui.scope_builder(builder, |ui| {
@@ -51,11 +52,17 @@ impl Task {
                     self.show_content(ui);
                 });
         }).response;
-        self.x += response.drag_delta().x;
-        self.y += response.drag_delta().y;
+        if response.dragged() {
+            self.x += response.drag_delta().x;
+            self.y += response.drag_delta().y;
+        }
+        if response.hovered() {
+            ctx.set_cursor_icon(egui::CursorIcon::Grabbing);
+        }
         response
     }
 
+    /// Renders content of task UI
     fn show_content(&self, ui: &mut Ui) {
         ui.set_min_size(TASK_SIZE);
         ui.set_max_size(TASK_SIZE);
