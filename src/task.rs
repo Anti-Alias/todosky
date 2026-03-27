@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use egui::{Color32, Context, Frame, Label, Layout, Pos2, Rect, Response, Sense, Stroke, Ui, UiBuilder, Vec2, Widget};
+use egui::{Color32, Frame, Id, Label, Layout, PointerButton, Pos2, Rect, Response, Sense, Stroke, Ui, UiBuilder, Vec2, Widget};
 use slotmap::{new_key_type, SlotMap};
 
 new_key_type! { pub struct TaskId; }
@@ -15,8 +15,9 @@ const TASK_STROKE: Stroke = Stroke {
 pub struct Task {
     pub name: String,
     pub description: Option<String>,
-    pub x: f32,
-    pub y: f32,
+    pub pos: Pos2,
+    /// When dragging with RMB, determines end point of line to be drawn.
+    pub arrow_pos: Option<Pos2>,
 }
 
 impl Task {
@@ -25,23 +26,28 @@ impl Task {
         Self {
             name: name.into(),
             description: None,
-            x: 0.0,
-            y: 0.0,
+            pos: Pos2::ZERO,
+            arrow_pos: None,
         }
     }
 
     /// Size / location this task occupies
     pub fn rect(&self) -> Rect {
         Rect {
-            min: Pos2::new(self.x, self.y),
-            max: Pos2::new(self.x+TASK_SIZE.x, self.y+TASK_SIZE.y),
+            min: self.pos,
+            max: self.pos + TASK_SIZE,
         }
     }
 
-    /// Renders task UI
-    pub fn show(&mut self, ui: &mut Ui, ctx: &Context) -> Response {
+    /// Renders task as a "node" in the center pane
+    pub fn show_as_node(&mut self, id: Id, ui: &mut Ui) -> Response {
+
+        // Renders task in a draggable area
         let rect = self.rect();
-        let builder = UiBuilder::default().sense(Sense::DRAG).max_rect(rect);
+        let builder = UiBuilder::default()
+            .id(id)
+            .sense(Sense::DRAG)
+            .max_rect(rect);
         let response = ui.scope_builder(builder, |ui| {
             Frame::NONE
                 .stroke(TASK_STROKE)
@@ -52,14 +58,30 @@ impl Task {
                     self.show_content(ui);
                 });
         }).response;
-        if response.dragged() {
-            self.x += response.drag_delta().x;
-            self.y += response.drag_delta().y;
+
+        // Handles dragging logic from response
+        if response.dragged_by(PointerButton::Primary) {
+            self.pos += response.drag_delta();
         }
+
+        // Handles arrow drawing when dragging with right mouse
+        if let Some(pointer_pos) = ui.pointer_latest_pos() && response.dragged_by(PointerButton::Secondary) {
+            self.arrow_pos = Some(pointer_pos);
+        }
+        else {
+            self.arrow_pos = None;
+        }
+
+        // Makes mouse hover if mouse is over the task
         if response.hovered() {
-            ctx.set_cursor_icon(egui::CursorIcon::Grabbing);
+            ui.set_cursor_icon(egui::CursorIcon::Grabbing);
         }
         response
+    }
+
+    pub fn show_as_row(&mut self, ui: &mut Ui) -> bool {
+        ui.label(&self.name);
+        ui.button("x").clicked()
     }
 
     /// Renders content of task UI
@@ -115,6 +137,13 @@ impl TaskGraph {
 
     pub fn iter_mut(&mut self) -> impl Iterator<Item=(TaskId, &mut Task)> {
         self.tasks.iter_mut()
+    }
+
+    pub fn retain<F>(&mut self, predicate: F)
+    where
+        F: FnMut(TaskId, &mut Task) -> bool,
+    {
+        self.tasks.retain(predicate);
     }
 
     pub fn dependencies(&self) -> impl Iterator<Item=(TaskId, &[TaskId])> {
