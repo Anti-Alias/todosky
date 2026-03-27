@@ -16,7 +16,7 @@ pub struct Task {
     pub name: String,
     pub description: Option<String>,
     pub pos: Pos2,
-    /// When dragging with RMB, determines end point of line to be drawn.
+    /// When dragging with RMB, determines end point of line to be drawn
     pub arrow_pos: Option<Pos2>,
 }
 
@@ -67,6 +67,11 @@ impl Task {
 
         // Handles arrow drawing when dragging with right mouse
         if let Some(pointer_pos) = ui.pointer_latest_pos() && response.dragged_by(PointerButton::Secondary) {
+            let global_to_local = ui
+                .layer_transform_to_global(ui.layer_id())
+                .unwrap()
+                .inverse();
+            let pointer_pos = global_to_local * pointer_pos;
             self.arrow_pos = Some(pointer_pos);
         }
         else {

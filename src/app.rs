@@ -2,9 +2,8 @@ use crate::{Task, TaskGraph};
 use std::ops::Range;
 use eframe::{App, CreationContext};
 use rand::RngExt;
-use egui::{pos2, Rangef, Rect, Scene};
 use egui::{
-    vec2, CentralPanel, Color32, Grid, Id, MenuBar, Painter, Panel, Pos2, ScrollArea, Stroke, Ui, ViewportCommand
+    pos2, vec2, CentralPanel, Color32, Grid, Id, MenuBar, Painter, Panel, Pos2, ScrollArea, Stroke, Ui, ViewportCommand, Rangef, Rect, Scene
 };
 
 const CROSS_COLOR: Color32          = Color32::from_rgba_unmultiplied_const(255, 255, 255, 50);
@@ -28,6 +27,7 @@ impl App for TodoskyApp {
 }
 
 impl TodoskyApp {
+
     pub fn new(_ctx: &CreationContext) -> Self {
         Self {
             tasks: TaskGraph::default(),
@@ -127,13 +127,19 @@ impl TodoskyApp {
     fn paint_dependency_arrows(tasks: &TaskGraph, painter: &Painter) {
         for (task_id, task_deps) in tasks.dependencies() {
             let task = tasks.get(task_id).unwrap();
-            let task_pos = task.rect().center();
             for dep_task_id in task_deps.iter().copied() {
                 let dep_task = tasks.get(dep_task_id).unwrap();
-                let dep_task_pos = dep_task.rect().center();
-                painter.line_segment([task_pos, dep_task_pos], DEP_STROKE);
+                Self::paint_arrow_between_tasks(task, dep_task, painter);
             }
         }
+    }
+
+    fn paint_arrow_between_tasks(task_a: &Task, task_b: &Task, painter: &Painter) {
+        Self::paint_arrow(task_a.pos, task_b.pos, painter);
+    }
+
+    fn paint_arrow(a: Pos2, b: Pos2, painter: &Painter) {
+        painter.line_segment([a, b], DEP_STROKE);
     }
 
     /// Adds a new task.
