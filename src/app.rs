@@ -3,13 +3,15 @@ use std::ops::Range;
 use eframe::{App, CreationContext};
 use rand::RngExt;
 use egui::{
-    pos2, vec2, CentralPanel, Color32, Grid, Id, MenuBar, Painter, Panel, Pos2, ScrollArea, Stroke, Ui, ViewportCommand, Rangef, Rect, Scene
+    pos2, vec2, CentralPanel, Color32, Grid, Id, MenuBar, Painter, Panel, Pos2, Rangef, Rect, Scene, ScrollArea, Stroke, Ui, ViewportCommand
 };
 
+const EPSILON: f32 = 0.001;
+const ARROW_SIDE_LEN: f32           = 10.0;
 const CROSS_COLOR: Color32          = Color32::from_rgba_unmultiplied_const(255, 255, 255, 50);
 const CROSS_HALF_SIZE: f32          = 200.0;
-const CROSS_STROKE: Stroke          = Stroke { width: 2.0, color: CROSS_COLOR };
-const DEP_STROKE: Stroke            = Stroke { width: 2.0, color: Color32::WHITE };
+const CROSS_STROKE: Stroke          = Stroke { width: 1.0, color: CROSS_COLOR };
+const DEP_STROKE: Stroke            = Stroke { width: 1.0, color: Color32::WHITE };
 const POS_OFFSET_RANGE: Range<f32>  = -40.0..40.0;
 const ZOOM_RANGE: Rangef            = Rangef { min: 0.1, max: 1.0 };
 
@@ -118,7 +120,7 @@ impl TodoskyApp {
         for (_, task) in tasks.iter() {
             let task_center = task.rect().center();
             if let Some(arrow_pos) = task.arrow_pos {
-                painter.line_segment([task_center, arrow_pos], DEP_STROKE);
+                Self::paint_arrow(task_center, arrow_pos, painter);
             }
         }
     }
@@ -138,8 +140,19 @@ impl TodoskyApp {
         Self::paint_arrow(task_a.pos, task_b.pos, painter);
     }
 
-    fn paint_arrow(a: Pos2, b: Pos2, painter: &Painter) {
-        painter.line_segment([a, b], DEP_STROKE);
+    fn paint_arrow(start: Pos2, end: Pos2, painter: &Painter) {
+        if start.distance_sq(end) < EPSILON*EPSILON {
+            return; 
+        }
+        let forwards        = (end - start).normalized() * ARROW_SIDE_LEN;
+        let left            = forwards.rot90();
+        let tri_left        = end + left;
+        let tri_right       = end - left;
+        let tri_forwards    = end + forwards;
+        painter.line_segment([start, end], DEP_STROKE);                 // Base of line
+        painter.line_segment([tri_left, tri_right], DEP_STROKE);        // Triangle
+        painter.line_segment([tri_right, tri_forwards], DEP_STROKE);    // Triangle
+        painter.line_segment([tri_forwards, tri_left], DEP_STROKE);     // Triangle
     }
 
     /// Adds a new task.

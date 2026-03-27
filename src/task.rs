@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-
 use egui::{Color32, Frame, Id, Label, Layout, PointerButton, Pos2, Rect, Response, Sense, Stroke, Ui, UiBuilder, Vec2, Widget};
 use slotmap::{new_key_type, SlotMap};
 
