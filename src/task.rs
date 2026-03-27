@@ -33,9 +33,10 @@ impl Task {
 
     /// Size / location this task occupies
     pub fn rect(&self) -> Rect {
+        let half_size = TASK_SIZE / 2.0;
         Rect {
-            min: self.pos,
-            max: self.pos + TASK_SIZE,
+            min: self.pos - half_size,
+            max: self.pos + half_size,
         }
     }
 

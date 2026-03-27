@@ -2,17 +2,21 @@ use crate::{Task, TaskGraph};
 use std::ops::Range;
 use eframe::{App, CreationContext};
 use rand::RngExt;
-use egui::pos2;
+use egui::{pos2, Rangef, Rect, Scene};
 use egui::{
     vec2, CentralPanel, Color32, Grid, Id, MenuBar, Painter, Panel, Pos2, ScrollArea, Stroke, Ui, ViewportCommand
 };
 
-
-const LINE_STROKE: Stroke = Stroke { width: 2.0, color: Color32::WHITE };
-const POS_OFFSET_RANGE: Range<f32>= 0.0..40.0;
+const CROSS_COLOR: Color32          = Color32::from_rgba_unmultiplied_const(255, 255, 255, 50);
+const CROSS_HALF_SIZE: f32          = 200.0;
+const CROSS_STROKE: Stroke          = Stroke { width: 2.0, color: CROSS_COLOR };
+const DEP_STROKE: Stroke            = Stroke { width: 2.0, color: Color32::WHITE };
+const POS_OFFSET_RANGE: Range<f32>  = -40.0..40.0;
+const ZOOM_RANGE: Rangef            = Rangef { min: 0.1, max: 1.0 };
 
 pub struct TodoskyApp {
     tasks: TaskGraph,
+    scene_rect: Rect,
 }
 
 impl App for TodoskyApp {
@@ -27,12 +31,13 @@ impl TodoskyApp {
     pub fn new(_ctx: &CreationContext) -> Self {
         Self {
             tasks: TaskGraph::default(),
+            scene_rect: Rect::ZERO,
         }
     }
 
     /// Center of the viewport in which new tasks in the graph will be created.
     fn viewport_center(&self) -> Pos2 {
-        pos2(512.0, 512.0)
+        Pos2::ZERO
     }
 
     /// Top panel, which includes the menu bar (File, Edit, Help etc)
@@ -57,12 +62,17 @@ impl TodoskyApp {
         CentralPanel::default().show_inside(ui, |ui| {
             ui.vertical_centered(|ui| {
                 ui.heading("Task Graph");
-                self.paint_free_arrows(ui.painter());
-                self.paint_dependency_arrows(ui.painter());
-                for (task_id, task) in self.tasks.iter_mut() {
-                    let task_id = Id::new(task_id);
-                    task.show_as_node(task_id, ui);
-                }
+                Scene::new()
+                    .zoom_range(ZOOM_RANGE)
+                    .show(ui, &mut self.scene_rect, |ui| {
+                        Self::paint_cross(ui.painter());
+                        Self::paint_free_arrows(&self.tasks, ui.painter());
+                        Self::paint_dependency_arrows(&self.tasks, ui.painter());
+                        for (task_id, task) in self.tasks.iter_mut() {
+                            let task_id = Id::new(task_id);
+                            task.show_as_node(task_id, ui);
+                        }
+                    });
             });
         });
     }
@@ -94,25 +104,34 @@ impl TodoskyApp {
         });
     }
 
+    fn paint_cross(painter: &Painter) {
+        let left    = pos2(-CROSS_HALF_SIZE, 0.0);
+        let right   = pos2(CROSS_HALF_SIZE, 0.0);
+        let top     = pos2(0.0, -CROSS_HALF_SIZE);
+        let bottom  = pos2(0.0, CROSS_HALF_SIZE);
+        painter.line_segment([left, right], CROSS_STROKE);
+        painter.line_segment([top, bottom], CROSS_STROKE);
+    }
+
     /// Paints line coming out of task that has no outgoing connection
-    fn paint_free_arrows(&self, painter: &Painter) {
-        for (_, task) in self.tasks.iter() {
+    fn paint_free_arrows(tasks: &TaskGraph, painter: &Painter) {
+        for (_, task) in tasks.iter() {
             let task_center = task.rect().center();
             if let Some(arrow_pos) = task.arrow_pos {
-                painter.line_segment([task_center, arrow_pos], LINE_STROKE);
+                painter.line_segment([task_center, arrow_pos], DEP_STROKE);
             }
         }
     }
 
     /// Paints lines that connect tasks in the center pane
-    fn paint_dependency_arrows(&self, painter: &Painter) {
-        for (task_id, task_deps) in self.tasks.dependencies() {
-            let task = self.tasks.get(task_id).unwrap();
+    fn paint_dependency_arrows(tasks: &TaskGraph, painter: &Painter) {
+        for (task_id, task_deps) in tasks.dependencies() {
+            let task = tasks.get(task_id).unwrap();
             let task_pos = task.rect().center();
             for dep_task_id in task_deps.iter().copied() {
-                let dep_task = self.tasks.get(dep_task_id).unwrap();
+                let dep_task = tasks.get(dep_task_id).unwrap();
                 let dep_task_pos = dep_task.rect().center();
-                painter.line_segment([task_pos, dep_task_pos], LINE_STROKE);
+                painter.line_segment([task_pos, dep_task_pos], DEP_STROKE);
             }
         }
     }
