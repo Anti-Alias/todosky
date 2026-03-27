@@ -19,7 +19,7 @@ impl App for TodoskyApp {
     fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
         self.show_top_panel(ui);
         self.show_right_panel(ui);
-        self.show_center_panel(ui);
+        self.show_central_panel(ui);
     }
 }
 
@@ -53,7 +53,7 @@ impl TodoskyApp {
     }
 
     /// Center panel, which includes draggable tasks
-    fn show_center_panel(&mut self, ui: &mut Ui) {
+    fn show_central_panel(&mut self, ui: &mut Ui) {
         CentralPanel::default().show_inside(ui, |ui| {
             ui.vertical_centered(|ui| {
                 ui.heading("Task Graph");
