@@ -36,45 +36,50 @@ impl Task {
         }
     }
 
+    /// Renders task as a row in the right panel.
+    /// Returns true if closed.
+    pub fn show_as_row(&mut self, ui: &mut Ui) -> bool {
+        ui.label(&self.name);
+        ui.button("x").clicked()
+    }
+
     /// Renders task as a "node" in the center pane
     pub fn show_as_node(&mut self, id: Id, ui: &mut Ui) -> InnerResponse<TaskResponse> {
-
         // Renders task in a draggable area
         let rect = self.rect();
-        let builder = UiBuilder::default()
-            .id(id)
-            .sense(Sense::DRAG)
-            .max_rect(rect);
+        let builder = UiBuilder::default().id(id).sense(Sense::DRAG).max_rect(rect);
         let response = ui.scope_builder(builder, |ui| {
             Frame::NONE
                 .stroke(TASK_STROKE)
                 .fill(ui.visuals().window_fill)
                 .corner_radius(TASK_CORNER_RADIUS)
-                .show(ui, |ui| {
-                    self.show_content(ui);
-                });
+                .show(ui, |ui| self.show_node_content(ui));
         }).response;
-
-        // Handles response
-        let inner_resp = self.handle_dragging(&response, ui);
+        // Determines task response from response
+        let task_response = self.handle_dragging(&response, ui);
         if response.hovered() {
             ui.set_cursor_icon(egui::CursorIcon::Grabbing);
         }
-        InnerResponse::new(inner_resp, response)
+        InnerResponse::new(task_response, response)
+    }
+
+    /// Renders content of task UI
+    fn show_node_content(&self, ui: &mut Ui) {
+        ui.set_min_size(TASK_SIZE);
+        ui.set_max_size(TASK_SIZE);
+        ui.with_layout(Layout::centered_and_justified(egui::Direction::TopDown), |ui| {
+            ui.add(Label::new(&self.name).selectable(false));
+        });
     }
 
     fn handle_dragging(&mut self, response: &Response, ui: &mut Ui) -> TaskResponse {
-
-        let Some(pointer_pos) = ui.pointer_latest_pos() else {
-            return TaskResponse::None
-        };
-
-        // LMB dragging logic
+        // Get pointer position
+        let Some(pointer_pos) = ui.pointer_latest_pos() else { return TaskResponse::None };
+        // Moves position if dragged with LMB
         if response.dragged_by(PointerButton::Primary) {
             self.pos += response.drag_delta();
         }
-
-        // RMB dragging logic. Drags free arrow.
+        // Moves free arrow if dragged with RMB
         if response.dragged_by(PointerButton::Secondary) {
             let global_to_local = ui
                 .layer_transform_to_global(ui.layer_id())
@@ -83,28 +88,13 @@ impl Task {
             let pointer_pos = global_to_local * pointer_pos;
             self.arrow_pos = Some(pointer_pos);
         }
-
-        // RMB drag release logic. Removes free arrow.
+        // Removes free arrow if released with RMB 
         if response.drag_stopped_by(PointerButton::Secondary) {
             if let Some(arrow_pos) = self.arrow_pos.take() {
                 return TaskResponse::ArrowReleased { release_pos: arrow_pos };
             }
         }
         TaskResponse::None
-    }
-
-    pub fn show_as_row(&mut self, ui: &mut Ui) -> bool {
-        ui.label(&self.name);
-        ui.button("x").clicked()
-    }
-
-    /// Renders content of task UI
-    fn show_content(&self, ui: &mut Ui) {
-        ui.set_min_size(TASK_SIZE);
-        ui.set_max_size(TASK_SIZE);
-        ui.with_layout(Layout::centered_and_justified(egui::Direction::TopDown), |ui| {
-            ui.add(Label::new(&self.name).selectable(false));
-        });
     }
 }
 
@@ -120,3 +110,4 @@ pub enum TaskResponse {
     None,
     ArrowReleased { release_pos: Pos2 },
 }
+

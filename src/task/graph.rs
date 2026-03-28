@@ -5,6 +5,8 @@ use slotmap::SlotMap;
 use thiserror::Error;
 use crate::{Task, TaskId};
 
+/// A directed acyclic graph (DAG) of tasks.
+/// Tasks can have dependencies on other tasks, but task cycles are disallowed.
 pub struct TaskGraph {
     tasks: SlotMap<TaskId, Task>,
     dependencies: HashMap<TaskId, Vec<TaskId>>,
@@ -12,22 +14,23 @@ pub struct TaskGraph {
 
 impl TaskGraph {
 
+    /// Inserts a new task, and returns its id
     pub fn insert(&mut self, task: Task) -> TaskId {
         self.tasks.insert(task)
     }
 
+    /// Removes a task by id. Returns task if found.
     pub fn remove(&mut self, task_id: TaskId) -> Option<Task> {
-        // Remove from graph
         let removed = self.tasks.remove(task_id);
-        // Remove task dependencies entry
         self.dependencies.remove(&task_id);
-        // Remove task id from all tasks that had dependencies on it
-        for (_, task_deps) in &mut self.dependencies {
+        self.dependencies.retain(|_, task_deps| {
             task_deps.retain(|tid| *tid != task_id);
-        }
+            !task_deps.is_empty()
+        });
         removed
     }
 
+    /// Returns true if parent task has a direct dependency on the child path.
     pub fn contains_dependency(&mut self, parent_id: TaskId, child_id: TaskId) -> bool {
         if
             !self.tasks.contains_key(parent_id) ||
@@ -40,6 +43,7 @@ impl TaskGraph {
         parent_deps.contains(&child_id)
     }
 
+    /// Adds a direct child dependency to the parent task
     pub fn add_dependency(&mut self, parent_id: TaskId, child_id: TaskId) -> Result<(), GraphError> {
         if !self.tasks.contains_key(parent_id) || !self.tasks.contains_key(child_id) {
             return Err(GraphError::TaskNotFound);
@@ -52,6 +56,8 @@ impl TaskGraph {
         Ok(())
     }
     
+    /// Returns true if the parent task has a direct or indirect dependency on another task.
+    /// Returns true if tasks are equal.
     pub fn has_path_to(&self, task_a: TaskId, task_b: TaskId) -> bool {
         let mut visited = HashSet::new();
         self._has_path_to(task_a, task_b, &mut visited)
@@ -74,6 +80,7 @@ impl TaskGraph {
         false
     }
 
+    /// Removes a direct child dependency from the parent task
     pub fn remove_dependency(&mut self, parent_id: TaskId, child_id: TaskId) -> bool {
         if !self.tasks.contains_key(parent_id) || !self.tasks.contains_key(child_id) {
             return false
@@ -88,6 +95,11 @@ impl TaskGraph {
         self.tasks.get(id)
     }
 
+    /// Gets task with specified id
+    pub fn get_mut(&mut self, id: TaskId) -> Option<&mut Task> {
+        self.tasks.get_mut(id)
+    }
+
     /// Gets first task that contains the given point.
     /// None if not found.
     pub fn get_at_pos(&self, pos: Pos2) -> Option<(TaskId, &Task)> {
@@ -95,18 +107,17 @@ impl TaskGraph {
             .find(|(_, task)| task.rect().contains(pos))
     }
 
-    pub fn get_mut(&mut self, id: TaskId) -> Option<&mut Task> {
-        self.tasks.get_mut(id)
-    }
-
+    /// Iterator over all tasks
     pub fn iter(&self) -> impl Iterator<Item=(TaskId, &Task)> {
         self.tasks.iter()
     }
 
+    /// Iterator over all tasks
     pub fn iter_mut(&mut self) -> impl Iterator<Item=(TaskId, &mut Task)> {
         self.tasks.iter_mut()
     }
 
+    /// Retains only the elements specified by the predicate.
     pub fn retain<F>(&mut self, predicate: F)
     where
         F: FnMut(TaskId, &mut Task) -> bool,
@@ -114,6 +125,7 @@ impl TaskGraph {
         self.tasks.retain(predicate);
     }
 
+    /// All dependency entries
     pub fn dependencies(&self) -> impl Iterator<Item=(TaskId, &[TaskId])> {
         self.dependencies.iter()
             .map(|(task_id, deps)| (*task_id, deps.as_slice()))
@@ -136,3 +148,4 @@ pub enum GraphError {
     #[error("Cycle detected")]
     CycleDetected, 
 }
+
