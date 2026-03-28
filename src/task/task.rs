@@ -39,7 +39,7 @@ impl Task {
     /// Renders task as a row in the right panel.
     /// Returns true if closed.
     pub fn show_as_row(&mut self, ui: &mut Ui) -> bool {
-        ui.label(&self.name);
+        ui.text_edit_singleline(&mut self.name);
         ui.button("x").clicked()
     }
 

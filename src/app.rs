@@ -1,5 +1,5 @@
 use crate::{GraphError, Task, TaskGraph, TaskId, TaskResponse, paint};
-use std::{collections::VecDeque, ops::Range};
+use std::ops::Range;
 use eframe::{App, CreationContext};
 use rand::RngExt;
 use egui::{
@@ -9,6 +9,7 @@ use egui::{
 const LINE_STROKE: Stroke           = Stroke { width: 1.0, color: Color32::WHITE };
 const TASK_OFFSET_RANGE: Range<f32> = -40.0..40.0;
 const ZOOM_RANGE: Rangef            = Rangef { min: 0.1, max: 1.0 };
+const COL_WIDTH_TASK_NAME: f32 = 200.0;
 
 pub struct TodoskyApp {
     tasks: TaskGraph,
@@ -18,7 +19,7 @@ pub struct TodoskyApp {
 impl App for TodoskyApp {
     fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
         // Renders UI
-        let mut actions = VecDeque::new();
+        let mut actions = ActionQueue::new();
         self.show_top_panel(ui, &mut actions);
         self.show_right_panel(ui, &mut actions);
         self.show_central_panel(ui, &mut actions);
@@ -44,7 +45,7 @@ impl TodoskyApp {
     }
 
     /// Top panel, which includes the menu bar (File, Edit, Help etc)
-    fn show_top_panel(&self, ui: &mut Ui, actions: &mut VecDeque<AppAction>) {
+    fn show_top_panel(&self, ui: &mut Ui, actions: &mut ActionQueue) {
         Panel::top("top_panel").show_inside(ui, |ui| {
             MenuBar::new().ui(ui, |ui| {
                 ui.menu_button("File", |ui| {
@@ -71,7 +72,7 @@ impl TodoskyApp {
     }
 
     /// Center panel, which includes draggable tasks
-    fn show_central_panel(&mut self, ui: &mut Ui, actions: &mut VecDeque<AppAction>) {
+    fn show_central_panel(&mut self, ui: &mut Ui, actions: &mut ActionQueue) {
         CentralPanel::default().show_inside(ui, |ui| {
             ui.vertical_centered(|ui| {
                 Scene::new().zoom_range(ZOOM_RANGE).show(ui, &mut self.scene_rect, |ui| {
@@ -90,7 +91,7 @@ impl TodoskyApp {
     }
 
     /// Right panel, which shows details about the currently selected task, if any
-    fn show_right_panel(&mut self, ui: &mut Ui, actions: &mut VecDeque<AppAction>) {
+    fn show_right_panel(&mut self, ui: &mut Ui, actions: &mut ActionQueue) {
         Panel::right("right_panel").show_inside(ui, |ui| {
             ui.vertical_centered(|ui| {
                 ui.heading("Todo");
@@ -101,13 +102,13 @@ impl TodoskyApp {
         });
     }
 
-    fn show_right_panel_body(&mut self, ui: &mut Ui, actions: &mut VecDeque<AppAction>) {
+    fn show_right_panel_body(&mut self, ui: &mut Ui, actions: &mut ActionQueue) {
         // Top "add task" button
         if ui.button("Add Task").clicked() {
             actions.push_back(AppAction::AddTask);
         }
         // Tasks in vertical list
-        Grid::new("vertical_task_list").show(ui, |ui| {
+        Grid::new("vertical_task_list").min_col_width(COL_WIDTH_TASK_NAME).show(ui, |ui| {
             for (task_id, task) in self.tasks.iter_mut() {
                 let deleted = task.show_as_row(ui);
                 ui.end_row();
@@ -134,7 +135,7 @@ impl TodoskyApp {
     fn handle_action(
         &mut self,
         action: AppAction,
-        actions: &mut VecDeque<AppAction>,
+        actions: &mut ActionQueue,
         ui: &mut Ui,
     ) {
         match action {
@@ -152,7 +153,7 @@ impl TodoskyApp {
         &mut self,
         parent_id: TaskId,
         child_pos: Pos2,
-        actions: &mut VecDeque<AppAction>,
+        actions: &mut ActionQueue,
     ) {
         let Some((child_id, _)) = self.tasks.get_at_pos(child_pos) else { return };
         if !self.tasks.contains_dependency(parent_id, child_id) {
@@ -195,3 +196,5 @@ impl AppAction {
         Self::DisplayToast(message.into())
     }
 }
+
+pub type ActionQueue = std::collections::VecDeque<AppAction>;
