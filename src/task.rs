@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use egui::{Color32, Frame, Id, Label, Layout, PointerButton, Pos2, Rect, Response, Sense, Stroke, Ui, UiBuilder, Vec2, Widget};
+use egui::{Color32, Frame, Id, InnerResponse, Label, Layout, PointerButton, Pos2, Rect, Response, Sense, Stroke, Ui, UiBuilder, Vec2, Widget};
 use slotmap::{new_key_type, SlotMap};
 
 new_key_type! { pub struct TaskId; }
@@ -40,7 +40,7 @@ impl Task {
     }
 
     /// Renders task as a "node" in the center pane
-    pub fn show_as_node(&mut self, id: Id, ui: &mut Ui) -> Response {
+    pub fn show_as_node(&mut self, id: Id, ui: &mut Ui) -> InnerResponse<TaskResponse> {
 
         // Renders task in a draggable area
         let rect = self.rect();
@@ -64,7 +64,7 @@ impl Task {
             self.pos += response.drag_delta();
         }
 
-        // Handles arrow drawing when dragging with right mouse
+        // Handles arrow dragging when dragging with right mouse
         if let Some(pointer_pos) = ui.pointer_latest_pos() && response.dragged_by(PointerButton::Secondary) {
             let global_to_local = ui
                 .layer_transform_to_global(ui.layer_id())
@@ -81,7 +81,7 @@ impl Task {
         if response.hovered() {
             ui.set_cursor_icon(egui::CursorIcon::Grabbing);
         }
-        response
+        InnerResponse::new(TaskResponse::None, response)
     }
 
     pub fn show_as_row(&mut self, ui: &mut Ui) -> bool {
@@ -115,6 +115,10 @@ impl TaskGraph {
 
     pub fn insert(&mut self, task: Task) -> TaskId {
         self.tasks.insert(task)
+    }
+
+    pub fn remove(&mut self, task_id: TaskId) -> Option<Task> {
+        self.tasks.remove(task_id)
     }
 
     pub fn add_dependency(&mut self, task_id_a: TaskId, task_id_b: TaskId) -> bool {
@@ -166,3 +170,10 @@ impl Default for TaskGraph {
     }
 }
 
+
+#[derive(Copy, Clone, Eq, PartialEq, Default, Debug)]
+pub enum TaskResponse {
+    #[default]
+    None,
+    ArrowReleased { release_pos: Pos2 },
+}
