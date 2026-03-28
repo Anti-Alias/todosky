@@ -3,7 +3,6 @@ use slotmap::{new_key_type};
 
 new_key_type! { pub struct TaskId; }
 
-const TASK_MARGIN: i8 = 5;
 const TASK_CORNER_RADIUS: u8 = 3;
 const TASK_SIZE: Vec2 = Vec2::new(150.0, 30.0);
 const TASK_STROKE: Stroke = Stroke { width: 1.0, color: Color32::WHITE };
@@ -49,7 +48,6 @@ impl Task {
         let response = ui.scope_builder(builder, |ui| {
             Frame::NONE
                 .stroke(TASK_STROKE)
-                .inner_margin(TASK_MARGIN)
                 .fill(ui.visuals().window_fill)
                 .corner_radius(TASK_CORNER_RADIUS)
                 .show(ui, |ui| {

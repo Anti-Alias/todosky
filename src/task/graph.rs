@@ -1,7 +1,8 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use egui::Pos2;
 use slotmap::SlotMap;
+use thiserror::Error;
 use crate::{Task, TaskId};
 
 pub struct TaskGraph {
@@ -39,12 +40,37 @@ impl TaskGraph {
         parent_deps.contains(&child_id)
     }
 
-    pub fn add_dependency(&mut self, parent_id: TaskId, child_id: TaskId) -> bool {
+    pub fn add_dependency(&mut self, parent_id: TaskId, child_id: TaskId) -> Result<(), GraphError> {
         if !self.tasks.contains_key(parent_id) || !self.tasks.contains_key(child_id) {
-            return false
+            return Err(GraphError::TaskNotFound);
+        }
+        if self.has_path_to(child_id, parent_id) {
+            return Err(GraphError::CycleDetected);
         }
         let parent_deps = self.dependencies.entry(parent_id).or_default();
         parent_deps.push(child_id);
+        Ok(())
+    }
+    
+    pub fn has_path_to(&self, task_a: TaskId, task_b: TaskId) -> bool {
+        let mut visited = HashSet::new();
+        self._has_path_to(task_a, task_b, &mut visited)
+    }
+
+    fn _has_path_to(
+        &self,
+        task_a: TaskId,
+        task_b: TaskId,
+        visited: &mut HashSet<TaskId>,
+    ) -> bool {
+        if task_a == task_b { return true }
+        visited.insert(task_a);
+        let Some(deps) = self.dependencies.get(&task_a) else { return false };
+        for dep in deps.iter().copied() {
+            if visited.contains(&dep) { continue };
+            let has_path = self._has_path_to(dep, task_b, visited);
+            if has_path { return true }
+        }
         false
     }
 
@@ -103,4 +129,10 @@ impl Default for TaskGraph {
     }
 }
 
-
+#[derive(Error, Copy, Clone, Eq, PartialEq, Debug)]
+pub enum GraphError {
+    #[error("Task not found")]
+    TaskNotFound,
+    #[error("Cycle detected")]
+    CycleDetected, 
+}

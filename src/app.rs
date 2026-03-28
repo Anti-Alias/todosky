@@ -1,4 +1,4 @@
-use crate::{Task, TaskGraph, TaskId, TaskResponse};
+use crate::{GraphError, Task, TaskGraph, TaskId, TaskResponse};
 use std::{collections::VecDeque, ops::Range};
 use eframe::{App, CreationContext};
 use rand::RngExt;
@@ -27,8 +27,8 @@ impl App for TodoskyApp {
         self.show_top_panel(ui, &mut actions);
         self.show_right_panel(ui, &mut actions);
         self.show_central_panel(ui, &mut actions);
-        for action in actions {
-            self.handle_action(action, ui);
+        while let Some(action) = actions.pop_front() {
+            self.handle_action(action, &mut actions, ui);
         }
     }
 }
@@ -145,38 +145,52 @@ impl TodoskyApp {
         }
     }
 
-    fn paint_arrow_between_tasks(task_a: &Task, task_b: &Task, painter: &Painter) {
-        Self::paint_arrow(task_a.pos, task_b.pos, painter);
+    fn paint_arrow_between_tasks(parent: &Task, child: &Task, painter: &Painter) {
+        if child.pos.distance_sq(parent.pos) < EPSILON*EPSILON { return }
+        let child_rect = child.rect();
+        let ray_dir = (parent.pos - child.pos).normalized();
+        let child_intersection = child_rect.intersects_ray_from_center(ray_dir);
+        Self::paint_arrow(parent.pos, child_intersection, painter);
     }
 
     fn paint_arrow(start: Pos2, end: Pos2, painter: &Painter) {
         if start.distance_sq(end) < EPSILON*EPSILON {
             return; 
         }
-        let forwards        = (end - start).normalized() * ARROW_SIDE_LEN;
-        let left            = forwards.rot90();
-        let tri_left        = end + left;
-        let tri_right       = end - left;
-        let tri_forwards    = end + forwards;
-        painter.line_segment([start, end], DEP_STROKE);                 // Base of line
-        painter.line_segment([tri_left, tri_right], DEP_STROKE);        // Triangle
-        painter.line_segment([tri_right, tri_forwards], DEP_STROKE);    // Triangle
-        painter.line_segment([tri_forwards, tri_left], DEP_STROKE);     // Triangle
+        let dir_forwards    = (end - start).normalized() * ARROW_SIDE_LEN;
+        let dir_left        = dir_forwards.rot90();
+        let tri_back        = end - dir_forwards;
+        let tri_left        = tri_back + dir_left;
+        let tri_right       = tri_back - dir_left;
+        painter.line_segment([start, end], DEP_STROKE);             // Base of line
+        painter.line_segment([tri_left, tri_right], DEP_STROKE);    // Triangle
+        painter.line_segment([tri_right, end], DEP_STROKE);         // Triangle
+        painter.line_segment([end, tri_left], DEP_STROKE);          // Triangle
     }
 
-    fn handle_action(&mut self, action: AppAction, ui: &mut Ui) {
+    fn handle_action(
+        &mut self,
+        action: AppAction,
+        actions: &mut VecDeque<AppAction>,
+        ui: &mut Ui,
+    ) {
         match action {
-            AppAction::AddTask                                  => { self.handle_add_task() }
+            AppAction::AddTask                                  => { self.handle_add_task(); }
             AppAction::RemoveTask(task_id)                      => { self.tasks.remove(task_id); }
-            AppAction::LinkUnlinkTask { task_id, release_pos }  => { self.handle_link_unlink_task(task_id, release_pos); },
+            AppAction::LinkUnlinkTask { task_id, release_pos }  => { self.handle_link_unlink_task(task_id, release_pos, actions); },
+            AppAction::DisplayToast(message)                    => { println!("Toast: {message}"); },
             AppAction::Quit                                     => { ui.send_viewport_cmd(ViewportCommand::Close); }
         }
     }
 
-    fn handle_link_unlink_task(&mut self, parent_id: TaskId, child_pos: Pos2) {
+    fn handle_link_unlink_task(&mut self, parent_id: TaskId, child_pos: Pos2, actions: &mut VecDeque<AppAction>) {
         let Some((child_id, _)) = self.tasks.get_at_pos(child_pos) else { return };
         if !self.tasks.contains_dependency(parent_id, child_id) {
-            self.tasks.add_dependency(parent_id, child_id);
+            let result = self.tasks.add_dependency(parent_id, child_id);
+            match result {
+                Err(GraphError::CycleDetected) => actions.push_back(AppAction::DisplayToast("Cycle detected".to_string())),
+                _ => {},
+            }
         }
         else {
             self.tasks.remove_dependency(parent_id, child_id);
@@ -203,4 +217,5 @@ pub enum AppAction {
     AddTask,
     RemoveTask(TaskId),
     LinkUnlinkTask { task_id: TaskId, release_pos: Pos2 },
+    DisplayToast(String),
 }
