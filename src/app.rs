@@ -174,7 +174,13 @@ impl TodoskyApp {
     }
 
     fn handle_link_unlink_task(&mut self, parent_id: TaskId, child_pos: Pos2) {
-        println!("Parent: {parent_id:?}, child pos: {child_pos:?}");
+        let Some((child_id, _)) = self.tasks.get_at_pos(child_pos) else { return };
+        if !self.tasks.contains_dependency(parent_id, child_id) {
+            self.tasks.add_dependency(parent_id, child_id);
+        }
+        else {
+            self.tasks.remove_dependency(parent_id, child_id);
+        }
     }
 
     /// Adds a new task.

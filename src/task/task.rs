@@ -1,14 +1,12 @@
-use std::collections::HashMap;
 use egui::{Color32, Frame, Id, InnerResponse, Label, Layout, PointerButton, Pos2, Rect, Response, Sense, Stroke, Ui, UiBuilder, Vec2, Widget};
-use slotmap::{new_key_type, SlotMap};
+use slotmap::{new_key_type};
 
 new_key_type! { pub struct TaskId; }
 
+const TASK_MARGIN: i8 = 5;
+const TASK_CORNER_RADIUS: u8 = 3;
 const TASK_SIZE: Vec2 = Vec2::new(150.0, 30.0);
-const TASK_STROKE: Stroke = Stroke {
-    width: 1.0,
-    color: Color32::WHITE,
-};
+const TASK_STROKE: Stroke = Stroke { width: 1.0, color: Color32::WHITE };
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct Task {
@@ -51,21 +49,35 @@ impl Task {
         let response = ui.scope_builder(builder, |ui| {
             Frame::NONE
                 .stroke(TASK_STROKE)
-                .inner_margin(5)
+                .inner_margin(TASK_MARGIN)
                 .fill(ui.visuals().window_fill)
-                .corner_radius(3)
+                .corner_radius(TASK_CORNER_RADIUS)
                 .show(ui, |ui| {
                     self.show_content(ui);
                 });
         }).response;
 
-        // Handles dragging logic from response
+        // Handles response
+        let inner_resp = self.handle_dragging(&response, ui);
+        if response.hovered() {
+            ui.set_cursor_icon(egui::CursorIcon::Grabbing);
+        }
+        InnerResponse::new(inner_resp, response)
+    }
+
+    fn handle_dragging(&mut self, response: &Response, ui: &mut Ui) -> TaskResponse {
+
+        let Some(pointer_pos) = ui.pointer_latest_pos() else {
+            return TaskResponse::None
+        };
+
+        // LMB dragging logic
         if response.dragged_by(PointerButton::Primary) {
             self.pos += response.drag_delta();
         }
 
-        // Handles arrow dragging when dragging with right mouse
-        if let Some(pointer_pos) = ui.pointer_latest_pos() && response.dragged_by(PointerButton::Secondary) {
+        // RMB dragging logic. Drags free arrow.
+        if response.dragged_by(PointerButton::Secondary) {
             let global_to_local = ui
                 .layer_transform_to_global(ui.layer_id())
                 .unwrap()
@@ -73,15 +85,14 @@ impl Task {
             let pointer_pos = global_to_local * pointer_pos;
             self.arrow_pos = Some(pointer_pos);
         }
-        else {
-            self.arrow_pos = None;
-        }
 
-        // Makes mouse hover if mouse is over the task
-        if response.hovered() {
-            ui.set_cursor_icon(egui::CursorIcon::Grabbing);
+        // RMB drag release logic. Removes free arrow.
+        if response.drag_stopped_by(PointerButton::Secondary) {
+            if let Some(arrow_pos) = self.arrow_pos.take() {
+                return TaskResponse::ArrowReleased { release_pos: arrow_pos };
+            }
         }
-        InnerResponse::new(TaskResponse::None, response)
+        TaskResponse::None
     }
 
     pub fn show_as_row(&mut self, ui: &mut Ui) -> bool {
@@ -104,72 +115,6 @@ impl Widget for &Task {
         todo!()
     }
 }
-
-
-pub struct TaskGraph {
-    tasks: SlotMap<TaskId, Task>,
-    dependencies: HashMap<TaskId, Vec<TaskId>>,
-}
-
-impl TaskGraph {
-
-    pub fn insert(&mut self, task: Task) -> TaskId {
-        self.tasks.insert(task)
-    }
-
-    pub fn remove(&mut self, task_id: TaskId) -> Option<Task> {
-        self.tasks.remove(task_id)
-    }
-
-    pub fn add_dependency(&mut self, task_id_a: TaskId, task_id_b: TaskId) -> bool {
-        if !self.tasks.contains_key(task_id_a) || !self.tasks.contains_key(task_id_b) {
-            return false
-        }
-        let task_deps = self.dependencies
-            .entry(task_id_a)
-            .or_default();
-        task_deps.push(task_id_b);
-        true
-    }
-
-    pub fn get(&self, id: TaskId) -> Option<&Task> {
-        self.tasks.get(id)
-    }
-
-    pub fn get_mut(&mut self, id: TaskId) -> Option<&mut Task> {
-        self.tasks.get_mut(id)
-    }
-
-    pub fn iter(&self) -> impl Iterator<Item=(TaskId, &Task)> {
-        self.tasks.iter()
-    }
-
-    pub fn iter_mut(&mut self) -> impl Iterator<Item=(TaskId, &mut Task)> {
-        self.tasks.iter_mut()
-    }
-
-    pub fn retain<F>(&mut self, predicate: F)
-    where
-        F: FnMut(TaskId, &mut Task) -> bool,
-    {
-        self.tasks.retain(predicate);
-    }
-
-    pub fn dependencies(&self) -> impl Iterator<Item=(TaskId, &[TaskId])> {
-        self.dependencies.iter()
-            .map(|(task_id, deps)| (*task_id, deps.as_slice()))
-    }
-}
-
-impl Default for TaskGraph {
-    fn default() -> Self {
-        Self {
-            tasks: SlotMap::default(),
-            dependencies: HashMap::default(), 
-        }
-    }
-}
-
 
 #[derive(Copy, Clone, Eq, PartialEq, Default, Debug)]
 pub enum TaskResponse {
