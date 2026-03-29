@@ -23,9 +23,9 @@ pub fn axis(painter: &Painter) {
 /// This occurs when the user is in the process of wiring dependencies, but hasn't let go of
 /// the RMB.
 pub fn free_arrows(tasks: &TaskGraph, painter: &Painter, stroke: Stroke) {
-    for (_, task) in tasks.iter() {
-        let task_center = task.rect().center();
-        if let Some(arrow_pos) = task.arrow_pos {
+    for (_, node) in tasks.iter() {
+        let task_center = node.task.rect().center();
+        if let Some(arrow_pos) = node.task.arrow_pos {
             arrow(task_center, arrow_pos, painter, stroke);
         }
     }

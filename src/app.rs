@@ -108,8 +108,8 @@ impl TodoskyApp {
                     paint::axis(ui.painter());
                     paint::free_arrows(&self.tasks, ui.painter(), LINE_STROKE);
                     Self::paint_dependency_arrows(&self.tasks, ui.painter());
-                    for (task_id, task) in self.tasks.iter_mut() {
-                        let response = task.show_as_node(Id::new(task_id), ui);
+                    for (task_id, node) in self.tasks.iter_mut() {
+                        let response = node.task.show_as_node(Id::new(task_id), ui);
                         if let TaskResponse::ArrowReleased { release_pos } = response.inner {
                             let action = AppAction::LinkUnlinkTask { task_id, release_pos };
                             self.sender.send(action).unwrap();
@@ -148,8 +148,8 @@ impl TodoskyApp {
         }
         // Tasks in vertical list
         Grid::new("vertical_task_list").min_col_width(COL_WIDTH_TASK_NAME).show(ui, |ui| {
-            for (task_id, task) in self.tasks.iter_mut() {
-                let deleted = task.show_as_row(ui);
+            for (task_id, node) in self.tasks.iter_mut() {
+                let deleted = node.task.show_as_row(ui);
                 ui.end_row();
                 if deleted {
                     self.sender.send(AppAction::RemoveTask(task_id)).unwrap();
@@ -160,11 +160,10 @@ impl TodoskyApp {
 
     /// Painta lines that connect tasks in the center pane.
     fn paint_dependency_arrows(tasks: &TaskGraph, painter: &Painter) {
-        for (task_id, task_deps) in tasks.dependencies() {
-            let task = tasks.get(task_id).unwrap();
-            for dep_task_id in task_deps.iter().copied() {
-                let dep_task = tasks.get(dep_task_id).unwrap();
-                paint::arrow_between_rects(task.rect(), dep_task.rect(), painter, LINE_STROKE);
+        for (_, parent) in tasks.iter() {
+            for child_id in parent.children().iter().copied() {
+                let child = tasks.get(child_id).unwrap();
+                paint::arrow_between_rects(parent.task.rect(), child.task.rect(), painter, LINE_STROKE);
             }
         }
     }
@@ -194,18 +193,24 @@ impl TodoskyApp {
     /// It may do nothing it adding the dependency would introduce a cycle.
     fn handle_link_unlink_task(&mut self, parent_id: TaskId, child_pos: Pos2) {
         let Some((child_id, _)) = self.tasks.get_at_pos(child_pos) else { return };
-        if !self.tasks.contains_dependency(parent_id, child_id) {
-            let result = self.tasks.add_dependency(parent_id, child_id);
-            match result {
-                Err(GraphError::CycleDetected) => {
-                    let toast = Toast::error("Cycle detected");
-                    self.sender.send(AppAction::DisplayToast(toast)).unwrap();
-                },
-                _ => {},
+
+        // Attempts to add link (dependency)
+        let link_added = match self.tasks.add_dependency(parent_id, child_id) {
+            Ok(added) => added,
+            Err(GraphError::TaskNotFound) => return,
+            Err(GraphError::CycleDetected) => {
+                let toast = Toast::error("Cycle detected");
+                self.sender.send(AppAction::DisplayToast(toast)).unwrap();
+                return;
+            },
+        };
+
+        // If already linked, remove the link
+        if !link_added {
+            match self.tasks.remove_dependency(parent_id, child_id) {
+                Ok(_) => {},
+                Err(err) => unreachable!("{err}"),
             }
-        }
-        else {
-            self.tasks.remove_dependency(parent_id, child_id);
         }
     }
 
