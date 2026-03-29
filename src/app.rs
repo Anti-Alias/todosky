@@ -193,6 +193,7 @@ impl TodoskyApp {
     /// It may do nothing it adding the dependency would introduce a cycle.
     fn handle_link_unlink_task(&mut self, parent_id: TaskId, child_pos: Pos2) {
         let Some((child_id, _)) = self.tasks.get_at_pos(child_pos) else { return };
+        if parent_id == child_id { return }
 
         // Attempts to add link (dependency)
         let link_added = match self.tasks.add_dependency(parent_id, child_id) {
