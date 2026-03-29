@@ -135,20 +135,25 @@ impl TodoskyApp {
             ui.vertical_centered(|ui| {
                 ui.heading("Todo");
                 ui.vertical(|ui| {
-                    self.show_right_panel_body(ui);
+                    self.show_todo_list(ui);
                 });
+                if self.has_backlog_tasks() {
+                    ui.heading("Backlog");
+                    ui.vertical(|ui| {
+                        self.show_backlog(ui);
+                    });
+                }
             });
         });
     }
 
-    fn show_right_panel_body(&mut self, ui: &mut Ui) {
-        // Top "add task" button
+    fn show_todo_list(&mut self, ui: &mut Ui) {
         if ui.button("Add Task").clicked() {
             self.sender.send(AppAction::AddTask).unwrap();
         }
-        // Tasks in vertical list
-        Grid::new("vertical_task_list").min_col_width(COL_WIDTH_TASK_NAME).show(ui, |ui| {
+        Grid::new("todo_list").min_col_width(COL_WIDTH_TASK_NAME).show(ui, |ui| {
             for (task_id, node) in self.tasks.iter_mut() {
+                if !node.children().is_empty() { continue }
                 let deleted = node.task.show_as_row(ui);
                 ui.end_row();
                 if deleted {
@@ -158,7 +163,29 @@ impl TodoskyApp {
         });
     }
 
-    /// Painta lines that connect tasks in the center pane.
+    fn show_backlog(&mut self, ui: &mut Ui) {
+        Grid::new("backlog").min_col_width(COL_WIDTH_TASK_NAME).show(ui, |ui| {
+            for (task_id, node) in self.tasks.iter_mut() {
+                if node.children().is_empty() { continue }
+                let deleted = node.task.show_as_row(ui);
+                ui.end_row();
+                if deleted {
+                    self.sender.send(AppAction::RemoveTask(task_id)).unwrap();
+                }
+            }
+        });
+    }
+
+    fn has_backlog_tasks(&self) -> bool {
+        for (_, node) in self.tasks.iter() {
+            if !node.children().is_empty() {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Paints dependency arrows between tasks  
     fn paint_dependency_arrows(tasks: &TaskGraph, painter: &Painter) {
         for (_, parent) in tasks.iter() {
             for child_id in parent.children().iter().copied() {
@@ -169,7 +196,6 @@ impl TodoskyApp {
     }
 
     /// Handles an enqueued action.
-    /// May fire more actions to be handled.
     fn handle_action(&mut self, action: AppAction, ctx: &Context) {
         match action {
             AppAction::AddTask                                  => { self.handle_add_task(); }
