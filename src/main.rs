@@ -12,7 +12,7 @@ async fn main() -> Result<()> {
     let settings = AppSettings {
         current_file: Some(String::from("thefile.yml")),
     };
-    let state = load_app_state(&settings)?;
+    let state = load_app_state(&settings);
 
     // Runs egui app 
     let viewport = ViewportBuilder::default();
@@ -25,10 +25,16 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-fn load_app_state(settings: &AppSettings) -> Result<AppState> {
+fn load_app_state(settings: &AppSettings) -> AppState {
     match &settings.current_file {
-        Some(current_file) => load_state_from_file(current_file),
-        None => Ok(AppState::default()),
+        Some(current_file) => match load_state_from_file(current_file) {
+            Ok(state) => state,
+            Err(err) => {
+                log::error!("Failed to load settings file: {err}");
+                AppState::default()
+            }
+        }
+        None => AppState::default(),
     } 
 }
 
