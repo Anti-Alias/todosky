@@ -1,5 +1,6 @@
 use egui::{Color32, Frame, Id, InnerResponse, Label, Layout, PointerButton, Pos2, Rect, Response, Sense, Stroke, Ui, UiBuilder, Vec2, Widget};
 use slotmap::{new_key_type};
+use serde::{Serialize, Deserialize};
 
 new_key_type! { pub struct TaskId; }
 
@@ -7,7 +8,7 @@ const TASK_CORNER_RADIUS: u8 = 3;
 const TASK_SIZE: Vec2 = Vec2::new(150.0, 30.0);
 const TASK_STROKE: Stroke = Stroke { width: 1.0, color: Color32::WHITE };
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub struct Task {
     pub name: String,
     pub description: Option<String>,

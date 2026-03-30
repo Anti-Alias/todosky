@@ -1,10 +1,12 @@
 use egui::Pos2;
 use slotmap::SlotMap;
 use thiserror::Error;
+use serde::{Serialize, Deserialize};
 use crate::{Task, TaskId};
 
 /// A directed acyclic graph (DAG) of tasks.
 /// Tasks can have dependencies on other tasks, but task cycles are disallowed.
+#[derive(Serialize, Deserialize)]
 pub struct TaskGraph {
     nodes: SlotMap<TaskId, TaskNode>,
 }
@@ -136,6 +138,7 @@ impl Default for TaskGraph {
 
 
 #[derive(Debug)]
+#[derive(Serialize, Deserialize)]
 pub struct TaskNode {
     pub task: Task,
     children: Vec<TaskId>,
