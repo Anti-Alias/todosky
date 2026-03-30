@@ -6,15 +6,11 @@ use anyhow::Result;
 #[tokio::main]
 async fn main() -> Result<()> {
     env_logger::init();
-
-    // Loads paths
-    let paths = Paths::new()?;
-    let settings = AppSettings {
-        current_file: Some(String::from("thefile.yml")),
-    };
-    let state = load_app_state(&settings);
-
-    // Runs egui app 
+    // Loads global settings / app state
+    let paths       = Paths::new()?;
+    let settings    = load_settings(&paths);
+    let state       = load_app_state(&settings);
+    // Runs app 
     let viewport = ViewportBuilder::default();
     let native_options = NativeOptions { viewport, ..Default::default() };
     eframe::run_native(
@@ -30,7 +26,7 @@ fn load_app_state(settings: &AppSettings) -> AppState {
         Some(current_file) => match load_state_from_file(current_file) {
             Ok(state) => state,
             Err(err) => {
-                log::error!("Failed to load settings file: {err}");
+                log::error!("Failed to load state file: {err}");
                 AppState::default()
             }
         }
@@ -44,3 +40,16 @@ fn load_state_from_file(file: &str) -> Result<AppState> {
     Ok(state)
 }
 
+fn load_settings(paths: &Paths) -> AppSettings {
+    let yaml = match std::fs::read_to_string(&paths.settings_file) {
+        Ok(yaml) => yaml,
+        Err(_) => return AppSettings::default(),
+    };
+    match serde_yaml::from_str(&yaml) {
+        Ok(settings) => settings,
+        Err(err) => {
+            log::error!("Failed to load settings file: {err}");
+            AppSettings::default()
+        }
+    }
+}

@@ -1,8 +1,7 @@
 use crate::paths::Paths;
 use crate::{paint, GraphError, Task, TaskGraph, TaskId, TaskResponse, Toast, ToastId};
-use std::path::Path;
+use crate::file_utils;
 use std::sync::mpsc;
-use std::io;
 use std::{ops::Range, sync::mpsc::{Receiver, Sender, TryRecvError}, time::Duration};
 use eframe::{App, CreationContext};
 use rand::RngExt;
@@ -264,6 +263,7 @@ impl TodoskyApp {
     }
 
     fn handle_save(&self) {
+
         // Get current file, if any
         let Some(current_file) = self.settings.current_file.as_deref() else {
             self.channel.send(AppAction::SaveAs);
@@ -294,15 +294,15 @@ impl TodoskyApp {
         self.channel.send(AppAction::SaveSettings);
     }
 
-    fn handle_save_as(&self) {
-        let action = AppAction::DisplayToast(Toast::success("Saved"));
-        self.channel.send(action);
+    fn handle_save_as(&mut self) {
+        // TODO: Implement save-as logic
+        self.settings.current_file = Some(String::from("thefile.yml"));
+        self.channel.send(AppAction::Save);
     }
 
     fn handle_save_settings(&self) {
-        println!("Paths: {:?}", self.paths);
         // Creates dir for settings file if necessary
-        match create_parent_path_of(&self.paths.settings_file) {
+        match file_utils::create_parent_path_of(&self.paths.settings_file) {
             Ok(_) => {},
             Err(err) => {
                 log::error!("{err}");
@@ -380,14 +380,6 @@ impl TodoskyApp {
             sender.send(AppAction::RemoveToast(toast_id)).unwrap();
         });
     }
-}
-
-fn create_parent_path_of(path: impl AsRef<Path>) -> Result<(), io::Error> {
-    let path = path.as_ref();
-    if let Some(parent_path) = path.parent() {
-        std::fs::create_dir_all(parent_path)?;
-    }
-    Ok(())
 }
 
 pub struct Channel {
