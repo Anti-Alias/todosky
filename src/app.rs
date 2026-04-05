@@ -1,10 +1,12 @@
 use crate::paths::Paths;
 use crate::{paint, GraphError, Task, TaskGraph, TaskId, TaskResponse, Toast, ToastId};
 use crate::file_utils;
+use std::path::PathBuf;
 use std::sync::mpsc;
 use std::{ops::Range, sync::mpsc::{Receiver, Sender, TryRecvError}, time::Duration};
 use eframe::{App, CreationContext};
 use rand::RngExt;
+use rfd::FileDialog;
 use serde::{Serialize, Deserialize};
 use egui::{
     vec2, CentralPanel, Color32, Context, Grid, Id, InputState, Key, KeyboardShortcut, MenuBar, Modifiers, Painter, Panel, Pos2, Rangef, Rect, Scene, Stroke, Ui, ViewportCommand
@@ -17,6 +19,10 @@ const ZOOM_RANGE: Rangef                    = Rangef { min: 0.1, max: 1.0 };
 const COL_WIDTH_TASK_NAME: f32              = 200.0;
 const TOAST_DURATION: Duration              = Duration::from_secs(5);
 const TOAST_BAR_HEIGHT: f32                 = 20.0;
+// File Menu
+const SAVE_AS_TITLE: &str = "Save As";
+const DEFAULT_FILE_NAME: &str = "todo.yml";
+const DEFAULT_FILE_EXTENSION: &str = "yml";
 // Shortcuts
 const SAVE_SHORTCUT: KeyboardShortcut       = KeyboardShortcut::new(Modifiers::CTRL, Key::S);
 const SAVE_AS_SHORTCUT: KeyboardShortcut    = KeyboardShortcut::new(Modifiers::CTRL.plus(Modifiers::SHIFT), Key::S);
@@ -50,7 +56,7 @@ impl Default for AppState {
 /// Saved to global settings file
 #[derive(Serialize, Deserialize, Debug, Default)]
 pub struct AppSettings {
-    pub current_file: Option<String>,
+    pub current_file: Option<PathBuf>,
 }
 
 impl App for TodoskyApp {
@@ -282,7 +288,7 @@ impl TodoskyApp {
         // Write to file
         if let Err(err) = std::fs::write(&current_file, yaml) {
             log::error!("{err}");
-            let message = format!("Failed to write to {}", current_file);
+            let message = format!("Failed to write to {}", current_file.display());
             let action = AppAction::DisplayToast(Toast::error(message));
             self.channel.send(action);
             return;
@@ -295,9 +301,16 @@ impl TodoskyApp {
     }
 
     fn handle_save_as(&mut self) {
-        // TODO: Implement save-as logic
-        self.settings.current_file = Some(String::from("thefile.yml"));
-        self.channel.send(AppAction::Save);
+        let picked_file = FileDialog::new()
+            .set_title(SAVE_AS_TITLE)
+            .set_file_name(DEFAULT_FILE_NAME)
+            .save_file();
+        if let Some(mut picked_file) = picked_file {
+            Self::cleanup_file_name(&mut picked_file);
+            self.settings.current_file = Some(picked_file);
+            self.channel.send(AppAction::SaveSettings);
+            self.channel.send(AppAction::Save);
+        }
     }
 
     fn handle_save_settings(&self) {
@@ -380,6 +393,12 @@ impl TodoskyApp {
             sender.send(AppAction::RemoveToast(toast_id)).unwrap();
         });
     }
+
+    fn cleanup_file_name(path: &mut PathBuf) {
+        if path.extension().is_none() {
+            path.set_extension(DEFAULT_FILE_EXTENSION);
+        }
+    }
 }
 
 pub struct Channel {
@@ -402,7 +421,6 @@ impl Default for Channel {
         }
     }
 }
-
 
 #[derive(Debug)]
 pub enum AppAction {
