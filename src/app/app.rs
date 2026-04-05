@@ -1,15 +1,15 @@
 use crate::paths::Paths;
-use crate::{paint, GraphError, Task, TaskGraph, TaskId, TaskResponse, Toast, ToastId};
+use crate::{paint, AppState, GraphError, Task, TaskGraph, TaskId, TaskResponse, Toast, ToastId};
 use crate::file_utils;
 use std::path::PathBuf;
 use std::sync::mpsc;
 use std::{ops::Range, sync::mpsc::{Receiver, Sender, TryRecvError}, time::Duration};
-use eframe::{App, CreationContext};
+use eframe::App;
 use rand::RngExt;
 use rfd::FileDialog;
 use serde::{Serialize, Deserialize};
 use egui::{
-    vec2, CentralPanel, Color32, Context, Grid, Id, InputState, Key, KeyboardShortcut, MenuBar, Modifiers, Painter, Panel, Pos2, Rangef, Rect, Scene, Stroke, Ui, ViewportCommand
+    vec2, CentralPanel, Color32, Context, Grid, Id, InputState, Key, KeyboardShortcut, MenuBar, Modifiers, Painter, Panel, Pos2, Rangef, Scene, Stroke, Ui, ViewportCommand
 };
 
 // UI constants
@@ -19,11 +19,13 @@ const ZOOM_RANGE: Rangef                    = Rangef { min: 0.1, max: 1.0 };
 const COL_WIDTH_TASK_NAME: f32              = 200.0;
 const TOAST_DURATION: Duration              = Duration::from_secs(5);
 const TOAST_BAR_HEIGHT: f32                 = 20.0;
-// File Menu
-const SAVE_AS_TITLE: &str = "Save As";
-const DEFAULT_FILE_NAME: &str = "todo.yml";
-const DEFAULT_FILE_EXTENSION: &str = "yml";
+// File picker constants
+const SAVE_AS_TITLE: &str           = "Save As";
+const OPEN_TITLE: &str              = "Open";
+const DEFAULT_FILE_NAME: &str       = "todo.yml";
+const DEFAULT_FILE_EXTENSION: &str  = "yml";
 // Shortcuts
+const OPEN_SHORTCUT: KeyboardShortcut       = KeyboardShortcut::new(Modifiers::CTRL, Key::O);
 const SAVE_SHORTCUT: KeyboardShortcut       = KeyboardShortcut::new(Modifiers::CTRL, Key::S);
 const SAVE_AS_SHORTCUT: KeyboardShortcut    = KeyboardShortcut::new(Modifiers::CTRL.plus(Modifiers::SHIFT), Key::S);
 
@@ -35,22 +37,6 @@ pub struct TodoskyApp {
     id_sequence: u32,
     toast: Option<(ToastId, Toast)>,
     channel: Channel,
-}
-
-/// Fields of app that are serializable
-#[derive(Serialize, Deserialize)]
-pub struct AppState {
-    tasks: TaskGraph,
-    scene_rect: Rect,
-}
-
-impl Default for AppState {
-    fn default() -> Self {
-        Self {
-            tasks: TaskGraph::default(),
-            scene_rect: Rect::ZERO,
-        }
-    }
 }
 
 /// Saved to global settings file
@@ -84,14 +70,36 @@ impl App for TodoskyApp {
 
 impl TodoskyApp {
 
-    pub fn new(_ctx: &CreationContext, state: AppState, settings: AppSettings, paths: Paths) -> Self {
-        Self {
-            state,
+    /// Loads application using paths.
+    pub fn load(paths: Paths) -> Self {
+        let settings = Self::load_settings(&paths);
+        let app = Self {
+            state: AppState::default(),
             settings,
             id_sequence: 0,
             toast: None,
             channel: Channel::default(),
             paths,
+        };
+        if app.settings.current_file.is_some() {
+            app.channel.send(AppAction::LoadCurrentFile);
+        }
+        app
+    }
+
+    /// Loads settings from settings file.
+    /// If not found, creates default settings.
+    fn load_settings(paths: &Paths) -> AppSettings {
+        let yaml = match std::fs::read_to_string(&paths.settings_file) {
+            Ok(yaml) => yaml,
+            Err(_) => return AppSettings::default(),
+        };
+        match serde_yaml::from_str(&yaml) {
+            Ok(settings) => settings,
+            Err(err) => {
+                log::error!("Failed to load settings file: {err}");
+                AppSettings::default()
+            }
         }
     }
 
@@ -108,6 +116,9 @@ impl TodoskyApp {
     }
 
     fn handle_shortcuts(&mut self, input: &mut InputState) {
+        if input.consume_shortcut(&OPEN_SHORTCUT) {
+            self.channel.send(AppAction::Open);
+        }
         if input.consume_shortcut(&SAVE_AS_SHORTCUT) {
             self.channel.send(AppAction::SaveAs);
         }
@@ -121,6 +132,9 @@ impl TodoskyApp {
         Panel::top("top_panel").show_inside(ui, |ui| {
             MenuBar::new().ui(ui, |ui| {
                 ui.menu_button("File", |ui| {
+                    if ui.button("Open (Ctrl+O)").clicked() {
+                        self.channel.send(AppAction::Open);
+                    }
                     if ui.button("Save (Ctrl+S)").clicked() {
                         self.channel.send(AppAction::Save);
                     }
@@ -254,9 +268,12 @@ impl TodoskyApp {
             AppAction::DisplayToast(toast)                      => { self.handle_display_toast(toast, ctx.clone()) },
             AppAction::RemoveToast(toast_id)                    => { self.handle_remove_toast(toast_id) },
             AppAction::Quit                                     => { ctx.send_viewport_cmd(ViewportCommand::Close); }
-            AppAction::Save                                     => { self.handle_save() },
-            AppAction::SaveAs                                   => { self.handle_save_as() },
-            AppAction::SaveSettings                             => { self.handle_save_settings() },
+            AppAction::Open                                     => { self.handle_open(); }
+            AppAction::Save                                     => { self.handle_save(); },
+            AppAction::SaveAs                                   => { self.handle_save_as(); },
+            AppAction::SaveSettings                             => { self.handle_save_settings(); },
+            AppAction::LoadCurrentFile                          => { self.handle_load_current_file(); }
+            AppAction::UpdateTitle                              => { self.handle_update_title(ctx); }
         }
     }
 
@@ -265,6 +282,16 @@ impl TodoskyApp {
             if toast_id == tid {
                 self.toast = None;
             }
+        }
+    }
+
+    /// Opens an existing file
+    fn handle_open(&mut self) {
+        let picked_file = FileDialog::new().set_title(OPEN_TITLE).pick_file();
+        if let Some(picked_file) = picked_file {
+            self.settings.current_file = Some(picked_file);
+            self.channel.send(AppAction::LoadCurrentFile);
+            self.channel.send(AppAction::SaveSettings);
         }
     }
 
@@ -310,6 +337,7 @@ impl TodoskyApp {
             self.settings.current_file = Some(picked_file);
             self.channel.send(AppAction::SaveSettings);
             self.channel.send(AppAction::Save);
+            self.channel.send(AppAction::UpdateTitle);
         }
     }
 
@@ -345,6 +373,36 @@ impl TodoskyApp {
         };
     }
 
+    fn handle_load_current_file(&mut self) {
+        let Some(current_file) = self.settings.current_file.as_deref() else {
+            log::error!("Current file not set");
+            return;
+        };
+        match AppState::load_from_file(current_file) {
+            Ok(state) => {
+                self.state = state;
+                self.channel.send(AppAction::UpdateTitle);
+            }
+            Err(err) => {
+                self.settings.current_file = None;
+                self.channel.send(AppAction::SaveSettings);
+                log::error!("Failed to load current file: {err}");
+            }
+        }
+    }
+
+    fn handle_update_title(&mut self, ctx: &Context) {
+        let Some(current_file) = self.settings.current_file.as_deref() else {
+            ctx.send_viewport_cmd(ViewportCommand::Title(String::from("")));
+            return;
+        };
+        let title = match current_file.file_name() {
+            Some(file_name) => file_name.display().to_string(),
+            None => String::from(DEFAULT_FILE_NAME),
+        };
+        ctx.send_viewport_cmd(ViewportCommand::Title(title));
+    }
+
     /// If a free arrow touches a task, it either adds a dependency or removes it.
     /// It may do nothing it adding the dependency would introduce a cycle.
     fn handle_link_unlink_task(&mut self, parent_id: TaskId, child_pos: Pos2) {
@@ -370,6 +428,7 @@ impl TodoskyApp {
             }
         }
     }
+
 
     /// Adds a new task.
     /// Invoked when "Add Task" button is pressed.
@@ -424,6 +483,7 @@ impl Default for Channel {
 
 #[derive(Debug)]
 pub enum AppAction {
+    Open,
     Save,
     SaveAs,
     SaveSettings,
@@ -433,5 +493,7 @@ pub enum AppAction {
     LinkUnlinkTask { task_id: TaskId, release_pos: Pos2 },
     DisplayToast(Toast),
     RemoveToast(ToastId),
+    LoadCurrentFile,
+    UpdateTitle,
 }
 
